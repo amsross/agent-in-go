@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log"
@@ -26,23 +27,32 @@ func run() error {
 
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	stream := client.Models.GenerateContentStream(
-		ctx,
-		"gemini-2.5-flash",
-		genai.Text("Explain how AI works in a few words"),
-		nil,
-	)
+	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Print("\n$> ")
+	for scanner.Scan() {
+		text := scanner.Text()
+		if text == "" {
+			break
+		}
 
-	for chunk, err := range stream {
+		response, err := client.Models.GenerateContent(
+			ctx,
+			"gemini-2.5-flash",
+			genai.Text(text),
+			nil,
+		)
+
 		if err != nil {
 			return err
 		}
 
-		part := chunk.Candidates[0].Content.Parts[0]
+		part := response.Candidates[0].Content.Parts[0]
 		fmt.Print(part.Text)
+
+		fmt.Print("\n\n$> ")
 	}
 
 	return nil
