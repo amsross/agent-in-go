@@ -51,6 +51,8 @@ func run() error {
 	toolBox := tools.NewToolBox()
 	toolBox.AddTool(&tools.TimeTool{})
 	toolBox.AddTool(&tools.DateTool{})
+	toolBox.AddTool(&tools.ReadFileTool{})
+	toolBox.AddTool(&tools.ListFilesTool{})
 
 	config := &genai.GenerateContentConfig{
 		Tools: []*genai.Tool{
