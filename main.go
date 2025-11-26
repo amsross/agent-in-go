@@ -6,13 +6,21 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
+	"github.com/charmbracelet/glamour"
 	"google.golang.org/genai"
+)
+
+const (
+	colorRed   = "\033[31m"
+	colorGreen = "\033[32m"
+	colorReset = "\033[0m"
 )
 
 func main() {
 	if err := run(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("%s%v%s", colorRed, err, colorReset)
 	}
 }
 
@@ -30,29 +38,45 @@ func run() error {
 		return err
 	}
 
+	termRenderer, err := glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+	)
+	if err != nil {
+		return err
+	}
+
 	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Print("\n$> ")
+	fmt.Printf("%s$> %s", colorGreen, colorReset)
 	for scanner.Scan() {
 		text := scanner.Text()
 		if text == "" {
 			break
 		}
 
-		response, err := client.Models.GenerateContent(
+		stream := client.Models.GenerateContentStream(
 			ctx,
 			"gemini-2.5-flash",
 			genai.Text(text),
 			nil,
 		)
 
+		var stringBuild strings.Builder
+		for chunk, err := range stream {
+			if err != nil {
+				return err
+			}
+
+			part := chunk.Candidates[0].Content.Parts[0]
+			fmt.Fprintf(&stringBuild, "%s", part.Text)
+		}
+
+		out, err := termRenderer.Render(stringBuild.String())
 		if err != nil {
 			return err
 		}
+		fmt.Print(out)
 
-		part := response.Candidates[0].Content.Parts[0]
-		fmt.Print(part.Text)
-
-		fmt.Print("\n\n$> ")
+		fmt.Printf("%s$> %s", colorGreen, colorReset)
 	}
 
 	return nil
