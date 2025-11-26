@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"mattross.io/agent-go/tools"
 	"os"
 	"strings"
 
@@ -13,9 +14,10 @@ import (
 )
 
 const (
-	colorRed   = "\033[31m"
-	colorGreen = "\033[32m"
-	colorReset = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[033m"
+	colorReset  = "\033[0m"
 )
 
 func main() {
@@ -46,14 +48,13 @@ func run() error {
 		return err
 	}
 
+	toolBox := tools.NewToolBox()
+	toolBox.AddTool(&tools.TimeTool{})
+	toolBox.AddTool(&tools.DateTool{})
+
 	config := &genai.GenerateContentConfig{
 		Tools: []*genai.Tool{
-			{FunctionDeclarations: []*genai.FunctionDeclaration{
-				{
-					Name:        "get_current_time",
-					Description: "Get the current time in a given location",
-				},
-			}},
+			{FunctionDeclarations: toolBox.FunctionDeclarations()},
 		},
 	}
 
@@ -61,7 +62,7 @@ func run() error {
 	var stringBuilder strings.Builder
 
 	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Printf("%s$> %s", colorGreen, colorReset)
+	fmt.Printf("%s$> %s", colorGreen, colorYellow)
 	for scanner.Scan() {
 		text := scanner.Text()
 		if text == "" {
@@ -87,38 +88,41 @@ func run() error {
 
 		// Handle tool calls in a loop
 		for {
-			if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
-				part := resp.Candidates[0].Content.Parts[0]
-
-				if part.FunctionCall == nil {
-					break // Not a function call, break the loop
-				}
-
-				if part.FunctionCall.Name == "get_current_time" {
-					currentTime := getCurrentTime()
-					conversation = append(conversation, &genai.Content{
-						Role: "model",
-						Parts: []*genai.Part{{
-							FunctionResponse: &genai.FunctionResponse{
-								Name:     "get_current_time",
-								Response: map[string]any{"time": currentTime},
-							},
-						}},
-					})
-
-					resp, err = client.Models.GenerateContent(ctx, "gemini-2.5-flash", conversation, config)
-					if err != nil {
-						return err
-					}
-					if resp == nil || len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
-						fmt.Println("No response from the model after tool call.")
-						break
-					}
-					conversation = append(conversation, resp.Candidates[0].Content)
-				} else {
-					break
-				}
+			content := resp.Candidates[0].Content
+			if len(content.Parts) == 0 {
+				break
 			}
+			part := content.Parts[0]
+			functionCall := part.FunctionCall
+
+			if functionCall == nil {
+				break // Not a function call, break the loop
+			}
+
+			functionResponse, err := toolBox.Execute(functionCall.Name, functionCall.Args)
+			if err != nil {
+				return err
+			}
+
+			conversation = append(conversation, &genai.Content{
+				Role: "function",
+				Parts: []*genai.Part{{
+					FunctionResponse: &genai.FunctionResponse{
+						Name:     functionCall.Name,
+						Response: functionResponse,
+					}},
+				},
+			})
+
+			resp, err = client.Models.GenerateContent(ctx, "gemini-2.5-flash", conversation, config)
+			if err != nil {
+				return err
+			}
+			if resp == nil || len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
+				fmt.Println("No response from the model after tool call.")
+				break
+			}
+			conversation = append(conversation, resp.Candidates[0].Content)
 		}
 
 		// Render the final response from the model
@@ -136,7 +140,7 @@ func run() error {
 			fmt.Print(out)
 		}
 
-		fmt.Printf("%s$> %s", colorGreen, colorReset)
+		fmt.Printf("%s$> %s", colorGreen, colorYellow)
 	}
 
 	return nil
