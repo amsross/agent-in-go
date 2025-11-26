@@ -1,0 +1,49 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+
+	"google.golang.org/genai"
+)
+
+func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
+	ctx := context.Background()
+
+	// Get the API key from the environment variable.
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("GEMINI_API_KEY environment variable not set")
+	}
+
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	stream := client.Models.GenerateContentStream(
+		ctx,
+		"gemini-2.5-flash",
+		genai.Text("Explain how AI works in a few words"),
+		nil,
+	)
+
+	for chunk, err := range stream {
+		if err != nil {
+			return err
+		}
+
+		part := chunk.Candidates[0].Content.Parts[0]
+		fmt.Print(part.Text)
+	}
+
+	return nil
+}
