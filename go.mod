@@ -1,4 +1,4 @@
-module mattross.io/agent-go
+module github.com/amsross/agent-in-go
 
 go 1.25.4
 
